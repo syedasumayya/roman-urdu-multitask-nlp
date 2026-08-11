@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Roman Urdu Annotation Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink:#1F2A44;
+    --ink-soft:#3D4A66;
+    --paper:#FAF7F0;
+    --paper-card:#FFFFFF;
+    --line:#E4DFD2;
+    --amber:#B8752E;
+    --amber-bg:#F6E9D8;
+    --rose:#A24942;
+    --rose-bg:#F5E3E1;
+    --sage:#4F7856;
+    --sage-bg:#E4EFE5;
+    --muted:#8A8578;
+    --mono:'IBM Plex Mono', monospace;
+    --serif:'Source Serif 4', serif;
+    --sans:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:var(--sans); background:var(--paper); color:var(--ink);
+    padding:2rem 1.5rem 4rem; min-height:100vh;
+  }
+  .wrap{max-width:760px; margin:0 auto;}
+  h1{font-family:var(--serif); font-weight:500; font-size:26px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:14px; margin:0 0 24px;}
+  .toolbar{display:flex; gap:10px; align-items:center; margin-bottom:20px; flex-wrap:wrap;}
+  button{
+    font-family:var(--sans); font-size:13px; font-weight:500; padding:8px 14px;
+    border-radius:8px; border:1px solid var(--line); background:var(--paper-card);
+    color:var(--ink); cursor:pointer; transition:background .15s;
+  }
+  button:hover{background:var(--amber-bg);}
+  button.primary{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  button.primary:hover{background:var(--ink-soft);}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+  input[type=file]{display:none;}
+  .progress-row{display:flex; align-items:center; gap:10px; margin-bottom:24px;}
+  .progress-bar{flex:1; height:6px; background:var(--line); border-radius:3px; overflow:hidden;}
+  .progress-fill{height:100%; background:var(--amber); transition:width .2s;}
+  .progress-label{font-family:var(--mono); font-size:12px; color:var(--muted); white-space:nowrap;}
+  .empty{
+    border:1px dashed var(--line); border-radius:12px; padding:48px 24px; text-align:center;
+    color:var(--muted); font-size:14px;
+  }
+  .card{
+    background:var(--paper-card); border:1px solid var(--line); border-radius:14px;
+    padding:28px 28px 24px; margin-bottom:20px;
+  }
+  .meta{font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:14px;}
+  .comment-text{font-family:var(--serif); font-size:19px; line-height:1.55; margin:0 0 20px;}
+  .section-label{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin:20px 0 8px;}
+  .token-row{display:flex; flex-wrap:wrap; gap:6px; font-family:var(--mono); font-size:14px;}
+  .token{
+    padding:4px 9px; border-radius:6px; cursor:pointer; border:1px solid var(--line);
+    background:var(--paper); user-select:none; transition:all .1s;
+  }
+  .token.urdu{background:var(--sage-bg); border-color:var(--sage); color:#2F4B34;}
+  .token.english{background:var(--amber-bg); border-color:var(--amber); color:#6B4014;}
+  .token.ambiguous{background:var(--rose-bg); border-color:var(--rose); color:#6B2E29;}
+  .choice-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .choice{
+    padding:7px 14px; border-radius:20px; border:1px solid var(--line); background:var(--paper);
+    font-size:13px; cursor:pointer; transition:all .12s;
+  }
+  .choice.selected{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .choice.emotion.selected{background:var(--amber); border-color:var(--amber); color:#3D2508;}
+  .nav-row{display:flex; justify-content:space-between; align-items:center; margin-top:8px;}
+  .nav-row .right{display:flex; gap:8px;}
+  .legend{display:flex; gap:14px; font-size:11px; color:var(--muted); margin-top:8px;}
+  .legend span{display:flex; align-items:center; gap:4px;}
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block;}
+  .status-msg{font-size:12px; color:var(--sage); font-family:var(--mono); min-height:16px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Roman Urdu annotation workbench</h1>
+  <p class="sub">Gold-standard labeling — sarcasm, hate speech, misinformation, emotion, and code-switch tagging.</p>
+
+  <div class="toolbar">
+    <button class="primary" id="loadBtn">Load CSV</button>
+    <input type="file" id="fileInput" accept=".csv">
+    <button id="exportBtn" disabled>Export labels (CSV)</button>
+    <button id="resetBtn" disabled>Reset progress</button>
+    <span class="status-msg" id="statusMsg"></span>
+  </div>
+
+  <div id="progressRow" class="progress-row" style="display:none;">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">0 / 0</div>
+  </div>
+
+  <div id="emptyState" class="empty">
+    Load <code>gold_unlabeled.csv</code> to start fresh, or re-load a file you previously exported to pick up exactly where you left off.
+  </div>
+
+  <div id="annotator" style="display:none;">
+    <div class="card">
+      <div class="meta" id="metaLine"></div>
+      <p class="comment-text" id="commentText"></p>
+
+      <div class="section-label">Code-switch tagging — click each word to cycle Urdu / English / ambiguous</div>
+      <div class="token-row" id="tokenRow"></div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--sage)"></span>Urdu</span>
+        <span><span class="dot" style="background:var(--amber)"></span>English</span>
+        <span><span class="dot" style="background:var(--rose)"></span>Ambiguous</span>
+      </div>
+
+      <div class="section-label">Sarcasm</div>
+      <div class="choice-row" data-group="sarcasm">
+        <div class="choice" data-value="yes">Sarcastic</div>
+        <div class="choice" data-value="no">Not sarcastic</div>
+      </div>
+
+      <div class="section-label">Hate speech</div>
+      <div class="choice-row" data-group="hate">
+        <div class="choice" data-value="none">None</div>
+        <div class="choice" data-value="offensive">Offensive</div>
+        <div class="choice" data-value="hate">Hate speech</div>
+      </div>
+
+      <div class="section-label">Misinformation</div>
+      <div class="choice-row" data-group="fake">
+        <div class="choice" data-value="na">Not a claim</div>
+        <div class="choice" data-value="factual">Factual</div>
+        <div class="choice" data-value="misinfo">Misinformation</div>
+      </div>
+
+      <div class="section-label">Emotion — select all that apply</div>
+      <div class="choice-row" data-group="emotion" data-multi="true">
+        <div class="choice emotion" data-value="joy">Joy</div>
+        <div class="choice emotion" data-value="anger">Anger</div>
+        <div class="choice emotion" data-value="sadness">Sadness</div>
+        <div class="choice emotion" data-value="fear">Fear</div>
+        <div class="choice emotion" data-value="surprise">Surprise</div>
+        <div class="choice emotion" data-value="none">None</div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button id="prevBtn">← Previous</button>
+      <div class="right">
+        <button id="skipBtn">Skip</button>
+        <button class="primary" id="saveNextBtn">Save &amp; next →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let comments = [];
+let labels = {};
+let currentIndex = 0;
+
+const el = id => document.getElementById(id);
+const STORAGE_KEY = "roman-urdu-annotation-session";
+
+function defaultLabel(){
+  return { sarcasm:null, hate:null, fake:null, emotion:[], tokens:null };
+}
+
+async function saveSession(){
+  const payload = { comments, labels, currentIndex };
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(payload), false);
+  }catch(e){
+    console.warn("Persistent storage unavailable, progress will only last this session.", e);
+  }
+}
+
+async function loadSession(){
+  try{
+    const result = await window.storage.get(STORAGE_KEY, false);
+    if(result && result.value){
+      const payload = JSON.parse(result.value);
+      comments = payload.comments || [];
+      labels = payload.labels || {};
+      currentIndex = payload.currentIndex || 0;
+      return comments.length > 0;
+    }
+  }catch(e){
+    console.warn("No saved session found or storage unavailable.", e);
+  }
+  return false;
+}
+
+function tokenize(text){
+  return text.split(/\s+/).filter(w => w.length > 0);
+}
+
+function renderTokens(idx){
+  const row = el("tokenRow");
+  row.innerHTML = "";
+  const words = tokenize(comments[idx].comment_text);
+  if(!labels[idx].tokens){
+    labels[idx].tokens = words.map(() => "urdu");
+  }
+  words.forEach((word, i) => {
+    const span = document.createElement("span");
+    span.className = "token " + labels[idx].tokens[i];
+    span.textContent = word;
+    span.onclick = () => {
+      const cycle = { urdu:"english", english:"ambiguous", ambiguous:"urdu" };
+      labels[idx].tokens[i] = cycle[labels[idx].tokens[i]];
+      span.className = "token " + labels[idx].tokens[i];
+      saveSession();
+    };
+    row.appendChild(span);
+  });
+}
+
+function renderChoices(idx){
+  document.querySelectorAll(".choice-row").forEach(row => {
+    const group = row.dataset.group;
+    const multi = row.dataset.multi === "true";
+    row.querySelectorAll(".choice").forEach(choiceEl => {
+      const val = choiceEl.dataset.value;
+      const isSelected = multi
+        ? labels[idx][group].includes(val)
+        : labels[idx][group] === val;
+      choiceEl.classList.toggle("selected", isSelected);
+      choiceEl.onclick = () => {
+        if(multi){
+          const arr = labels[idx][group];
+          const pos = arr.indexOf(val);
+          if(pos > -1) arr.splice(pos, 1); else arr.push(val);
+        } else {
+          labels[idx][group] = val;
+        }
+        saveSession();
+        renderChoices(idx);
+      };
+    });
+  });
+}
+
+function renderCard(){
+  if(comments.length === 0) return;
+  const idx = currentIndex;
+  if(!labels[idx]) labels[idx] = defaultLabel();
+
+  el("metaLine").textContent = `video ${comments[idx].video_id || "n/a"} · ${tokenize(comments[idx].comment_text).length} words`;
+  el("commentText").textContent = comments[idx].comment_text;
+  renderTokens(idx);
+  renderChoices(idx);
+
+  const labeledCount = Object.values(labels).filter(l =>
+    l.sarcasm && l.hate && l.fake
+  ).length;
+  el("progressFill").style.width = (labeledCount / comments.length * 100) + "%";
+  el("progressLabel").textContent = `${labeledCount} / ${comments.length} fully labeled  ·  viewing ${idx+1}`;
+
+  el("prevBtn").disabled = idx === 0;
+}
+
+el("loadBtn").onclick = () => el("fileInput").click();
+
+function parseTaggedTokens(tagged, wordCount){
+  if(!tagged) return null;
+  const parts = tagged.split(" ").map(p => {
+    const idx = p.lastIndexOf("/");
+    return idx === -1 ? "urdu" : p.slice(idx+1);
+  });
+  return parts.length === wordCount ? parts : null;
+}
+
+el("fileInput").onchange = (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      const rows = results.data.filter(r => r.comment_text && r.comment_text.trim().length > 0);
+      const isResume = rows.length > 0 && ("sarcasm" in rows[0]);
+
+      comments = rows.map(r => ({ video_id: r.video_id, comment_text: r.comment_text }));
+      labels = {};
+      let firstUnfinished = 0;
+
+      comments.forEach((c, i) => {
+        const r = rows[i];
+        const words = tokenize(c.comment_text);
+        if(isResume){
+          labels[i] = {
+            sarcasm: r.sarcasm || null,
+            hate: r.hate_speech || null,
+            fake: r.misinformation || null,
+            emotion: r.emotion ? r.emotion.split("|").filter(x => x) : [],
+            tokens: parseTaggedTokens(r.code_switch_tags, words.length)
+          };
+          const isDone = labels[i].sarcasm && labels[i].hate && labels[i].fake;
+          if(isDone && firstUnfinished === i) firstUnfinished = i + 1;
+        } else {
+          labels[i] = defaultLabel();
+        }
+      });
+
+      currentIndex = Math.min(firstUnfinished, comments.length - 1);
+      saveSession();
+      showAnnotator();
+      el("statusMsg").textContent = isResume
+        ? `Resumed — ${firstUnfinished} already done, continuing from comment ${currentIndex+1}.`
+        : `Loaded ${comments.length} comments fresh.`;
+    }
+  });
+};
+
+function showAnnotator(){
+  el("emptyState").style.display = "none";
+  el("annotator").style.display = "block";
+  el("progressRow").style.display = "flex";
+  el("exportBtn").disabled = false;
+  el("resetBtn").disabled = false;
+  renderCard();
+}
+
+el("prevBtn").onclick = () => {
+  if(currentIndex > 0){ currentIndex--; saveSession(); renderCard(); }
+};
+el("skipBtn").onclick = () => {
+  if(currentIndex < comments.length - 1){ currentIndex++; saveSession(); renderCard(); }
+};
+el("saveNextBtn").onclick = () => {
+  if(currentIndex < comments.length - 1){
+    currentIndex++;
+  } else {
+    el("statusMsg").textContent = "Last comment reached — export whenever ready.";
+  }
+  saveSession();
+  renderCard();
+};
+
+el("resetBtn").onclick = async () => {
+  if(!confirm("This clears all progress on this dataset. Continue?")) return;
+  comments = []; labels = {}; currentIndex = 0;
+  try{ await window.storage.delete(STORAGE_KEY, false); }catch(e){}
+  el("emptyState").style.display = "block";
+  el("annotator").style.display = "none";
+  el("progressRow").style.display = "none";
+  el("exportBtn").disabled = true;
+  el("resetBtn").disabled = true;
+  el("statusMsg").textContent = "Progress reset.";
+};
+
+el("exportBtn").onclick = () => {
+  const rows = comments.map((c, i) => {
+    const l = labels[i] || defaultLabel();
+    const words = tokenize(c.comment_text);
+    const tagged = words.map((w, wi) => `${w}/${(l.tokens && l.tokens[wi]) || "urdu"}`).join(" ");
+    return {
+      video_id: c.video_id || "",
+      comment_text: c.comment_text,
+      sarcasm: l.sarcasm || "",
+      hate_speech: l.hate || "",
+      misinformation: l.fake || "",
+      emotion: l.emotion.join("|"),
+      code_switch_tags: tagged
+    };
+  });
+  const csv = Papa.unparse(rows);
+
+  // Try native download first (works in normal browsers, may be blocked in sandboxed previews)
+  let downloadWorked = false;
+  try {
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "gold_labeled.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    downloadWorked = true;
+  } catch(e){
+    downloadWorked = false;
+  }
+
+  // Always also show the copy-paste fallback modal, since sandboxed previews
+  // often silently block the download above without throwing an error.
+  showExportModal(csv);
+  el("statusMsg").textContent = downloadWorked
+    ? "Exported — if no download appeared, use the copy box below."
+    : "Download blocked here — use the copy box below instead.";
+};
+
+function showExportModal(csv){
+  let modal = document.getElementById("exportModal");
+  if(!modal){
+    modal = document.createElement("div");
+    modal.id = "exportModal";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(31,42,68,0.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;";
+    modal.innerHTML = `
+      <div style="background:var(--paper-card);border-radius:14px;padding:24px;max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+        <div style="font-family:var(--sans);font-weight:600;font-size:15px;margin-bottom:6px;">Your labels (copy this)</div>
+        <div style="font-family:var(--sans);font-size:12.5px;color:var(--muted);margin-bottom:12px;">
+          Click "Select all" below, copy (Ctrl+C / Cmd+C), then paste into a plain text editor
+          (Notepad / TextEdit) and save the file as <code>gold_labeled.csv</code>.
+        </div>
+        <textarea id="exportTextarea" readonly style="flex:1;min-height:240px;font-family:var(--mono);font-size:11px;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical;"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+          <button id="selectAllBtn">Select all</button>
+          <button class="primary" id="closeModalBtn">Done</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("closeModalBtn").onclick = () => modal.remove();
+    document.getElementById("selectAllBtn").onclick = () => {
+      const ta = document.getElementById("exportTextarea");
+      ta.focus(); ta.select();
+      try{ document.execCommand("copy"); el("statusMsg").textContent = "Copied to clipboard."; }catch(e){}
+    };
+  }
+  document.getElementById("exportTextarea").value = csv;
+}
+
+(async function init(){
+  const restored = await loadSession();
+  if(restored){
+    showAnnotator();
+    el("statusMsg").textContent = "Restored previous session.";
+  }
+})();
+</script>
+</body>
+</html>
