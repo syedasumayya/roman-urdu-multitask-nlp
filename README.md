@@ -164,13 +164,3 @@ it in a browser. It shows one comment at a time with:
   not independently human-verified at full scale.
 - Multi-task experiments used only 2 loss-weighting configurations;
   gradient-based task-balancing methods were not attempted.
-
-## Future Work
-
-- Gradient-based multi-task balancing (e.g. GradNorm, PCGrad) to properly
-  address the negative transfer observed here
-- Collecting more gold-labeled sarcasm examples specifically
-- A dedicated misinformation-focused data collection pass (targeting
-  claim-heavy content, e.g. news comment sections specifically)
-- Testing Urdu-specific or South-Asian-language-specific pretrained models
-  as an alternative to general multilingual XLM-RoBERTa
